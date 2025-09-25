@@ -1,0 +1,101 @@
+select * from insurance
+
+-- What are the top 5 patients who claimed the highest insurance amounts?
+
+SELECT *,
+DENSE_RANK() OVER(ORDER BY claim DESC)
+FROM insurance
+LIMIT 5
+
+-- What is the average insurance claimed by patients based on the number of children they have?
+
+SELECT children, avg_claim, row_num FROM(SELECT*,
+AVG(claim) OVER(PARTITION BY children) as 'avg_claim',
+ROW_NUMBER() OVER(PARTITION BY children) as 'row_num'
+FROM insurance) t
+where t.row_num =1
+
+
+-- What is the highest and lowest claimed amount by patients in each region?
+
+SELECT region, MAX(highest_value) AS Max , MIN(lowest_value) AS Min FROM (select *,
+FIRST_VALUE (claim) OVER(PARTITION BY region ORDER BY claim DESC) as 'highest_value',
+LAST_VALUE (claim) OVER(PARTITION BY region ORDER BY claim DESC ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) as 'lowest_value'
+FROM insurance ) t
+WHERE t.claim = t.highest_value OR t.claim = t.lowest_value
+GROUP BY region 
+
+-- OR
+
+SELECT region, min_claim, max_claim FROM (SELECT *,
+MAX(claim) OVER(PARTITION BY region) as 'max_claim',
+MIN(claim) OVER(PARTITION BY region) as 'min_claim',
+ROW_NUMBER() OVER(PARTITION BY region) as 'row_num'
+FROM insurance) t
+where t.row_num = 1
+
+-- What is the differnce between the claimed amount of each patient and the claimed amount of the first patient??
+
+SELECT *,
+claim - FIRST_VALUE(claim) OVER() as 'diffrence'
+FROM insurance
+
+-- For each patient, calculate the diffrence between their claimed amount and the average claimed amount with the same number of children??
+
+SELECT *,
+AVG(claim) OVER(PARTITION BY children) as 'avrg',
+ABS(claim - AVG(claim) OVER(PARTITION BY children)) as 'diff'
+FROM insurance
+
+-- Show the patient with the highsest BMI in each region and their respective overall rank?
+
+SELECT region, BMI_MAX, claim,
+RANK() OVER(ORDER BY BMI_MAX DESC) FROM (SELECT *,
+MAX(BMI) OVER(PARTITION BY region) as 'BMI_MAX'
+FROM insurance) t
+where t.bmi = t.BMI_MAX
+
+-- Calculate the diffrence between the claimed amount of each patient and the 
+-- cliamed amount of the patient who has the highest BMI in their region
+
+SELECT *, 
+FIRST_VALUE(claim) OVER(PARTITION BY region ORDER BY bmi DESC) as 'BMI_claim'
+ABS(claim - FIRST_VALUE(claim) OVER(PARTITION BY region ORDER BY bmi DESC)) as 'diff' 
+FROM insurance
+
+ -- For each patient, calculate the difference in claim amount between the patient and the patient 
+ -- with the highest claim amount among patients with the smoker status, within the same region
+
+SELECT *,
+(MAX(claim) OVER(PARTITION BY region,smoker) - claim) as 'claim_diff'
+FROM insurance
+ORDER BY claim_diff DESC
+
+-- For each patient, find the maximum BMI value among their next three records (ordered by age)
+
+SELECT *,
+MAX(bmi) OVER(ORDER BY age ROWS BETWEEN 1 FOLLOWING AND 3 FOLLOWING) as 'maxi'
+FROM insurance
+
+-- For each patient, find the rolling avaerage of the last 2 claims
+
+SELECT *,
+AVG(claim) OVER(ROWS BETWEEN 2 PRECEDING AND 1 PRECEDING)
+FROM insurance 
+
+-- Find the first claimed insurance value for male and female patients,
+-- within each region order the data by patient age in ASC order,
+-- amd only include patients who are non- diabetic and have a bmi value between 25 and 30
+
+with filtered_data AS(
+	SELECT * FROM insurance
+    WHERE diabetic = 'No' AND bmi BETWEEN 25 AND 30
+)
+
+SELECT * FROM (SELECT *,
+FIRST_VALUE(claim) OVER(PARTITION BY region, gender ORDER BY age) as 'first_claim',
+ROW_NUMBER() OVER (PARTITION BY region, gender ORDER BY age) AS row_num
+FROM filtered_data) t
+WHERE t.row_num = 1
+
+
